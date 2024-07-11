@@ -37,18 +37,18 @@ def make_df():
         response.raise_for_status()
         data = response.json()
         
-        if 'result' in data and 'list' in data['result']:
-            tickers = data['result']['list']
+        if 'ret_code' in data and data['ret_code'] == 0:
+            tickers = data['result']
             
             for ticker in tickers:
                 symbol = ticker['symbol']
-                last_price = float(ticker['lastPrice'])
-                turnover_24h = float(ticker['turnover24h'])
-                OI_val = float(ticker['openInterestValue'])
-                FR = ticker['fundingRate']
-                high = float(ticker['highPrice24h'])
-                low = float(ticker['lowPrice24h'])
-                pcp = float(ticker['price24hPcnt'])
+                last_price = float(ticker['last_price'])
+                turnover_24h = float(ticker['turnover_24h'])
+                OI_val = float(ticker['open_interest_value'])
+                FR = ticker['funding_rate']
+                high = float(ticker['high_price_24h'])
+                low = float(ticker['low_price_24h'])
+                pcp = float(ticker['price_24h_pcnt'])
                 
                 df = df.append({
                     'Symbol': symbol,
@@ -62,7 +62,7 @@ def make_df():
                 }, ignore_index=True)
         
         else:
-            st.error("Error: Data structure is not as expected.")
+            st.error(f"Error: {data['ret_msg']}")
     
     except requests.exceptions.RequestException as e:
         st.error(f"Error fetching data: {e}")
