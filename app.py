@@ -1,10 +1,13 @@
 import streamlit as st
 import requests
 import pandas as pd
-import os
+import boto3
 import hmac
 import hashlib
 import time
+
+# Initialize Boto3 client for Systems Manager
+ssm = boto3.client('ssm')
 
 # Function to create the signature for Bybit API
 def create_signature(secret, params):
@@ -14,11 +17,20 @@ def create_signature(secret, params):
 # Function to fetch market data from API
 def make_df():
     url = "https://api.bybit.com/v5/market/tickers"
-    api_key = os.getenv('BYBIT_API_KEY')
-    api_secret = os.getenv('BYBIT_API_SECRET')
     
-    if not api_key or not api_secret:
-        st.error("API key and secret are not set.")
+    try:
+        # Retrieve API key and secret from Parameter Store
+        api_key_param = ssm.get_parameter(Name='BYBIT_API_KEY', WithDecryption=True)
+        api_secret_param = ssm.get_parameter(Name='BYBIT_API_SECRET', WithDecryption=True)
+        
+        api_key = api_key_param['Parameter']['Value']
+        api_secret = api_secret_param['Parameter']['Value']
+        
+    except ssm.exceptions.ParameterNotFound:
+        st.error("API key or secret not found in Parameter Store.")
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Error retrieving parameters from Parameter Store: {e}")
         return pd.DataFrame()
     
     params = {
