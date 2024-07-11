@@ -1,14 +1,38 @@
 import streamlit as st
 import requests
 import pandas as pd
+import os
+import hmac
+import hashlib
+import time
+
+# Function to create the signature for Bybit API
+def create_signature(secret, params):
+    param_str = "&".join([f"{key}={value}" for key, value in sorted(params.items())])
+    return hmac.new(secret.encode('utf-8'), param_str.encode('utf-8'), hashlib.sha256).hexdigest()
 
 # Function to fetch market data from API
 def make_df():
-    url = "https://api.bybit.com/v5/market/tickers?category=linear"
+    url = "https://api.bybit.com/v5/market/tickers"
+    api_key = os.getenv('BYBIT_API_KEY')
+    api_secret = os.getenv('BYBIT_API_SECRET')
+    
+    if not api_key or not api_secret:
+        st.error("API key and secret are not set.")
+        return pd.DataFrame()
+    
+    params = {
+        'category': 'linear',
+        'api_key': api_key,
+        'timestamp': str(int(time.time() * 1000)),
+    }
+    
+    params['sign'] = create_signature(api_secret, params)
+    
     df = pd.DataFrame(columns=['Symbol', '24h Turnover', 'Last Price', 'Open Interest Value', 'Funding Rate', '24h High Price', '24h Low Price', '% Change Price'])
     
     try:
-        response = requests.get(url)
+        response = requests.get(url, params=params)
         response.raise_for_status()
         data = response.json()
         
@@ -25,7 +49,7 @@ def make_df():
                 low = float(ticker['lowPrice24h'])
                 pcp = float(ticker['price24hPcnt'])
                 
-                df = df._append({
+                df = df.append({
                     'Symbol': symbol,
                     'Last Price': round(last_price, 2),
                     '24h Turnover': round(turnover_24h, 2),
