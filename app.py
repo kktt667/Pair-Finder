@@ -60,7 +60,7 @@ def run_analysis(df, selected_symbols):
 
 # Streamlit app
 def main():
-    st.title("Pair Identifier")
+    st.title("Krishna's Pair Identifier")
 
     min_volume_million = st.number_input("Specify Volume Filter (in millions):", min_value=0.0, step=0.1)
 
