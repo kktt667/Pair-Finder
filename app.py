@@ -1,55 +1,26 @@
 import streamlit as st
 import requests
 import pandas as pd
-import hashlib
-import hmac
-import time
 import os
+import hmac
+import hashlib
+import time
 
 # Function to create the signature for Bybit API
 def create_signature(secret, params):
     param_str = "&".join([f"{key}={value}" for key, value in sorted(params.items())])
     return hmac.new(secret.encode('utf-8'), param_str.encode('utf-8'), hashlib.sha256).hexdigest()
 
-# Class to manage API requests and rate limits
-class BybitAPI:
-    def __init__(self, api_key, api_secret):
-        self.api_key = api_key
-        self.api_secret = api_secret
-        self.rate_limit = 50  # Example: Bybit allows 50 requests per minute
-        self.rate_limit_period = 60  # Example: Bybit rate limit period in seconds
-        self.last_request_time = 0
-        self.request_count = 0
-
-    def request(self, endpoint, params=None):
-        self._check_rate_limit()
-        
-        # Make API request using requests library or similar
-        response = requests.get(endpoint, params=params)
-        
-        # Update rate limit counters
-        self.last_request_time = time.time()
-        self.request_count += 1
-        
-        return response
-
-    def _check_rate_limit(self):
-        current_time = time.time()
-        
-        if current_time - self.last_request_time > self.rate_limit_period:
-            # Reset counters if rate limit period has passed
-            self.last_request_time = current_time
-            self.request_count = 0
-        
-        if self.request_count >= self.rate_limit:
-            # Handle rate limit exceeded scenario, wait or implement backoff
-            time_to_wait = self.last_request_time + self.rate_limit_period - current_time
-            time.sleep(max(0, time_to_wait))
-            self._check_rate_limit()  # Recursively check again after waiting
-
-# Function to fetch market data from Bybit API
-def make_df(api_key, api_secret):
+# Function to fetch market data from API
+def make_df():
     url = "https://api.bybit.com/v5/market/tickers"
+    
+    api_key = os.getenv('BYBIT_API_KEY')
+    api_secret = os.getenv('BYBIT_API_SECRET')
+    
+    if not api_key or not api_secret:
+        st.error("API key or secret not found in environment variables.")
+        return pd.DataFrame()
     
     params = {
         'category': 'linear',
@@ -59,16 +30,15 @@ def make_df(api_key, api_secret):
     
     params['sign'] = create_signature(api_secret, params)
     
+    df = pd.DataFrame(columns=['Symbol', '24h Turnover', 'Last Price', 'Open Interest Value', 'Funding Rate', '24h High Price', '24h Low Price', '% Change Price'])
+    
     try:
-        bybit_api = BybitAPI(api_key, api_secret)
-        response = bybit_api.request(url, params=params)
+        response = requests.get(url, params=params)
         response.raise_for_status()
         data = response.json()
         
         if 'result' in data and 'list' in data['result']:
             tickers = data['result']['list']
-            
-            df = pd.DataFrame(columns=['Symbol', '24h Turnover', 'Last Price', 'Open Interest Value', 'Funding Rate', '24h High Price', '24h Low Price', '% Change Price'])
             
             for ticker in tickers:
                 symbol = ticker['symbol']
@@ -90,16 +60,14 @@ def make_df(api_key, api_secret):
                     '24h Low Price': round(low, 2),
                     '% Change Price': pcp,
                 }, ignore_index=True)
-            
-            return df
         
         else:
             st.error("Error: Data structure is not as expected.")
-            return pd.DataFrame()
     
     except requests.exceptions.RequestException as e:
         st.error(f"Error fetching data: {e}")
-        return pd.DataFrame()
+    
+    return df
 
 # Function to filter DataFrame based on minimum volume
 def filter_df(df, min_volume):
@@ -141,9 +109,7 @@ def display_volume_analysis():
     
     if st.button("Apply Filter"):
         st.session_state['min_volume_million'] = min_volume_million
-        api_key = os.getenv('BYBIT_API_KEY')
-        api_secret = os.getenv('BYBIT_API_SECRET')
-        st.session_state['filtered_data'] = filter_df(make_df(api_key, api_secret), min_volume_million)
+        st.session_state['filtered_data'] = filter_df(make_df(), min_volume_million)
     
     if 'filtered_data' in st.session_state:
         filtered_data = st.session_state['filtered_data']
