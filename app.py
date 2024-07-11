@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 
 # Function to fetch market data from API
+# Git comment from Auth
 def make_df():
     url = "https://api.bybit.com/v5/market/tickers?category=linear"
     df = pd.DataFrame(columns=['Symbol', '24h Turnover', 'Last Price', 'Open Interest Value', 'Funding Rate', '24h High Price', '24h Low Price', '% Change Price'])
