@@ -1,10 +1,8 @@
 import streamlit as st
 import requests
 import pandas as pd
-from datetime import datetime
 
 # Function to fetch market data from API
-# Git comment from Auth
 def make_df():
     url = "https://api.bybit.com/v5/market/tickers?category=linear"
     df = pd.DataFrame(columns=['Symbol', '24h Turnover', 'Last Price', 'Open Interest Value', 'Funding Rate', '24h High Price', '24h Low Price', '% Change Price'])
@@ -56,28 +54,61 @@ def filter_df(df, min_volume):
     return filtered_df
 
 # Function to run analysis based on selected checkboxes
-def run_analysis(df, selected_symbols):
+def run_analysis(selected_symbols):
     st.write("Selected symbols:", selected_symbols)
 
 # Streamlit app
 def main():
-    st.title("Krishna's Pair Identifier")
+    st.set_page_config(page_title="Pair Identifier", layout="wide")
 
-    min_volume_million = st.number_input("Specify Volume Filter (in millions):", min_value=0.0, step=0.1)
+    # Sidebar
+    st.sidebar.title("Pair Identifier")
+    st.sidebar.markdown("---")
+    if st.sidebar.button("Home"):
+        st.session_state['page'] = 'home'
+    
+    # Check if Volume Analysis button is clicked
+    if st.sidebar.button("Volume Analysis"):
+        st.session_state['page'] = 'volume_analysis'
+    
+    # Display the appropriate page
+    if st.session_state.get('page') == 'volume_analysis':
+        display_volume_analysis()
+    else:
+        display_welcome_page()
 
-    if st.button("GO"):
-        market_data = make_df()
-        filtered_data = filter_df(market_data, min_volume_million)
-        
+# Function to display volume analysis section
+def display_volume_analysis():
+    st.title("Volume Analysis")
+    min_volume_million = st.number_input("Specify Volume Filter (in millions):", min_value=0.0, step=0.1, key='volume_input')
+    
+    if st.button("Apply Filter"):
+        st.session_state['min_volume_million'] = min_volume_million
+        st.session_state['filtered_data'] = filter_df(make_df(), min_volume_million)
+    
+    if 'filtered_data' in st.session_state:
+        filtered_data = st.session_state['filtered_data']
         if not filtered_data.empty:
-            selected_symbols = st.multiselect("Select Symbols for Analysis", filtered_data['Symbol'])
+            select_all_option = 'Select All Symbols'
+            symbols = filtered_data['Symbol'].tolist()
+            selected_symbols = st.multiselect("Select Symbols for Analysis", [select_all_option] + symbols)
             
+            if select_all_option in selected_symbols:
+                selected_symbols = symbols
+
             st.dataframe(filtered_data)
 
             if st.button("Run Analysis"):
-                run_analysis(filtered_data, selected_symbols)
+                run_analysis(selected_symbols)
         else:
             st.info("No tokens found with 24h turnover above the minimum volume.")
 
+# Function to display welcome page
+def display_welcome_page():
+    st.title("Welcome to the Pair Identifier Tool")
+    st.markdown("This tool helps you analyze trading pairs based on various metrics.")
+    st.markdown("---")
+
+# Main function to run the app
 if __name__ == "__main__":
     main()
