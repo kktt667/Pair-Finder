@@ -15,6 +15,7 @@ def create_signature(secret, params):
 def make_df():
     url = "https://api.bybit.com/v5/market/tickers"
     
+    # Retrieve API key and secret from environment variables
     api_key = os.getenv('BYBIT_API_KEY')
     api_secret = os.getenv('BYBIT_API_SECRET')
     
@@ -24,45 +25,42 @@ def make_df():
     
     params = {
         'category': 'linear',
-        'api_key': api_key,
         'timestamp': str(int(time.time() * 1000)),
     }
     
     params['sign'] = create_signature(api_secret, params)
     
+    headers = {
+        'Content-Type': 'application/json',
+        'X-BYBIT-APIKEY': api_key
+    }
+    
     df = pd.DataFrame(columns=['Symbol', '24h Turnover', 'Last Price', 'Open Interest Value', 'Funding Rate', '24h High Price', '24h Low Price', '% Change Price'])
     
     try:
-        response = requests.get(url, params=params)
+        response = requests.get(url, headers=headers, params=params)
         response.raise_for_status()
         data = response.json()
         
         if 'ret_code' in data and data['ret_code'] == 0:
             tickers = data['result']
             
+            rows = []
             for ticker in tickers:
-                symbol = ticker['symbol']
-                last_price = float(ticker['last_price'])
-                turnover_24h = float(ticker['turnover_24h'])
-                OI_val = float(ticker['open_interest_value'])
-                FR = ticker['funding_rate']
-                high = float(ticker['high_price_24h'])
-                low = float(ticker['low_price_24h'])
-                pcp = float(ticker['price_24h_pcnt'])
-                
-                df = df.append({
-                    'Symbol': symbol,
-                    'Last Price': round(last_price, 2),
-                    '24h Turnover': round(turnover_24h, 2),
-                    'Open Interest Value': round(OI_val, 2),
-                    'Funding Rate': FR,
-                    '24h High Price': round(high, 2),
-                    '24h Low Price': round(low, 2),
-                    '% Change Price': pcp,
-                }, ignore_index=True)
+                rows.append({
+                    'Symbol': ticker['symbol'],
+                    'Last Price': round(float(ticker['last_price']), 2),
+                    '24h Turnover': round(float(ticker['turnover_24h']), 2),
+                    'Open Interest Value': round(float(ticker['open_interest_value']), 2),
+                    'Funding Rate': ticker['funding_rate'],
+                    '24h High Price': round(float(ticker['high_price_24h']), 2),
+                    '24h Low Price': round(float(ticker['low_price_24h']), 2),
+                    '% Change Price': float(ticker['price_24h_pcnt']),
+                })
+            df = pd.DataFrame(rows)
         
         else:
-            st.error(f"Error: {data['ret_msg']}")
+            st.error(f"Error: {data.get('ret_msg', 'Unknown error')}")
     
     except requests.exceptions.RequestException as e:
         st.error(f"Error fetching data: {e}")
