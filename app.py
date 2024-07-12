@@ -1,66 +1,43 @@
 import streamlit as st
 import requests
 import pandas as pd
-import os
-import hmac
-import hashlib
-import time
-
-# Function to create the signature for Bybit API
-def create_signature(secret, params):
-    param_str = "&".join([f"{key}={value}" for key, value in sorted(params.items())])
-    return hmac.new(secret.encode('utf-8'), param_str.encode('utf-8'), hashlib.sha256).hexdigest()
 
 # Function to fetch market data from API
 def make_df():
-    url = "https://api.bybit.com/v5/market/tickers"
-    
-    # Retrieve API key and secret from environment variables
-    api_key = os.getenv('BYBIT_API_KEY')
-    api_secret = os.getenv('BYBIT_API_SECRET')
-    
-    if not api_key or not api_secret:
-        st.error("API key or secret not found in environment variables.")
-        return pd.DataFrame()
-    
-    params = {
-        'category': 'linear',
-        'timestamp': str(int(time.time() * 1000)),
-    }
-    
-    params['sign'] = create_signature(api_secret, params)
-    
-    headers = {
-        'Content-Type': 'application/json',
-        'X-BYBIT-APIKEY': api_key
-    }
-    
+    url = "https://api.bybit.com/v5/market/tickers?category=linear"
     df = pd.DataFrame(columns=['Symbol', '24h Turnover', 'Last Price', 'Open Interest Value', 'Funding Rate', '24h High Price', '24h Low Price', '% Change Price'])
     
     try:
-        response = requests.get(url, headers=headers, params=params)
+        response = requests.get(url)
         response.raise_for_status()
         data = response.json()
         
-        if 'ret_code' in data and data['ret_code'] == 0:
-            tickers = data['result']
+        if 'result' in data and 'list' in data['result']:
+            tickers = data['result']['list']
             
-            rows = []
             for ticker in tickers:
-                rows.append({
-                    'Symbol': ticker['symbol'],
-                    'Last Price': round(float(ticker['last_price']), 2),
-                    '24h Turnover': round(float(ticker['turnover_24h']), 2),
-                    'Open Interest Value': round(float(ticker['open_interest_value']), 2),
-                    'Funding Rate': ticker['funding_rate'],
-                    '24h High Price': round(float(ticker['high_price_24h']), 2),
-                    '24h Low Price': round(float(ticker['low_price_24h']), 2),
-                    '% Change Price': float(ticker['price_24h_pcnt']),
-                })
-            df = pd.DataFrame(rows)
+                symbol = ticker['symbol']
+                last_price = float(ticker['lastPrice'])
+                turnover_24h = float(ticker['turnover24h'])
+                OI_val = float(ticker['openInterestValue'])
+                FR = ticker['fundingRate']
+                high = float(ticker['highPrice24h'])
+                low = float(ticker['lowPrice24h'])
+                pcp = float(ticker['price24hPcnt'])
+                
+                df = df._append({
+                    'Symbol': symbol,
+                    'Last Price': round(last_price, 2),
+                    '24h Turnover': round(turnover_24h, 2),
+                    'Open Interest Value': round(OI_val, 2),
+                    'Funding Rate': FR,
+                    '24h High Price': round(high, 2),
+                    '24h Low Price': round(low, 2),
+                    '% Change Price': pcp,
+                }, ignore_index=True)
         
         else:
-            st.error(f"Error: {data.get('ret_msg', 'Unknown error')}")
+            st.error("Error: Data structure is not as expected.")
     
     except requests.exceptions.RequestException as e:
         st.error(f"Error fetching data: {e}")
