@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import pandas as pd
+from datetime import datetime, timedelta
 
 # Function to fetch market data from API
 def make_df():
@@ -53,9 +54,88 @@ def filter_df(df, min_volume):
     filtered_df = df[df['24h Turnover'] >= min_volume * 1_000_000]
     return filtered_df
 
+# Function to fetch kline data from API
+def get_kline(token, interval, start_time):
+    url = f"https://api.bybit.com/v5/market/kline?symbol={token}&interval={interval}&start={start_time}"
+    
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data['retCode'] == 0:
+            return data['result']['list']
+        else:
+            st.error(f"API Error: {data['retMsg']}")
+            return []
+    except requests.exceptions.RequestException as e:
+        st.error(f"Request error for {token}: {e}")
+        return []
+
+
+# Function to calculate statistics
+def calc_stats(token, interval, days, significance_level):
+    start_time = int((datetime.now() - timedelta(days=days)).timestamp() * 1000)
+    st.write(f"Fetching kline data for token {token} from {start_time}")
+    volume_data = get_kline(token, interval, start_time)
+    
+    if volume_data:
+        df = pd.DataFrame(volume_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'turnover'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df['open'] = df['open'].astype(float)
+        df['close'] = df['close'].astype(float)
+        df['volume'] = df['volume'].astype(float)
+        df.set_index('timestamp', inplace=True)
+        
+        st.write("DataFrame after conversion:")
+        st.write(df.head())
+
+        # Calculate % change in the price
+        df['price_change'] = df['close'].pct_change() * 100
+        
+        st.write("Price changes:")
+        st.write(df[['close', 'price_change']].head())
+
+        significant_changes = df[df['price_change'].abs() >= significance_level].copy()
+        st.write("Significant changes detected:")
+        st.write(significant_changes[['price_change']].head())
+
+        if not significant_changes.empty:
+            significant_changes['previous_close'] = significant_changes['close'].shift(1)
+            significant_changes = significant_changes.dropna(subset=['previous_close'])
+            
+            total_volumes = []
+            for i in range(1, len(significant_changes)):
+                start_time = significant_changes.index[i-1]
+                end_time = significant_changes.index[i]
+                total_volume = df.loc[start_time:end_time, 'volume'].sum()
+                total_volumes.append(total_volume)
+            
+            significant_changes = significant_changes.iloc[1:]  # Drop the first row 
+            significant_changes['total_volume'] = total_volumes
+            
+            st.write("Final significant changes with volumes:")
+            st.write(significant_changes[['price_change', 'total_volume']])
+            
+            return significant_changes[['price_change', 'total_volume']]
+        else:
+            st.write("No significant price changes found.")
+            return pd.DataFrame()
+    else:
+        st.write("No data returned from API.")
+        return pd.DataFrame()
+
+
 # Function to run analysis based on selected checkboxes
-def run_analysis(selected_symbols):
+def run_analysis(selected_symbols, interval, days, significance_level):
     st.write("Selected symbols:", selected_symbols)
+    for token in selected_symbols:
+        st.subheader(f"Analysis for {token}")
+        result_df = calc_stats(token, interval, days, significance_level)
+        if not result_df.empty:
+            st.dataframe(result_df)
+        else:
+            st.write(f"No significant price changes found for {token}")
 
 # Streamlit app
 def main():
@@ -98,8 +178,12 @@ def display_volume_analysis():
 
             st.dataframe(filtered_data)
 
+            interval = st.selectbox("Select Interval", ["1m", "5m", "15m", "30m", "1h", "4h", "1d"], index=4)
+            days = st.slider("Select number of days for historical data", 1, 365, 90)
+            significance_level = st.slider("Select significance level (%)", 0.1, 10.0, 2.0)
+
             if st.button("Run Analysis"):
-                run_analysis(selected_symbols)
+                run_analysis(selected_symbols, interval, days, significance_level)
         else:
             st.info("No tokens found with 24h turnover above the minimum volume.")
 
